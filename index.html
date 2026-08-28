@@ -205,7 +205,7 @@ let t = 0;
 const WIN_SCORE = 7;
 const PADDLE_H = 78, PADDLE_W = 26;
 
-const player = { x: 26, y: H/2 - PADDLE_H/2, score: 0, vy: 0, blink: 0 };
+const player = { x: 26, y: H/2 - PADDLE_H/2, score: 0, vy: 0, blink: 0, scoredLast: false };
 const cpu    = { x: W - 26 - PADDLE_W, y: H/2 - PADDLE_H/2, score: 0, vy: 0, blink: 0 };
 const ball = { x: W/2, y: H/2, vx: 0, vy: 0, r: 9, spin: 0, squish: 0 };
 
@@ -239,7 +239,9 @@ function serveBall(dir) {
 }
 
 function resetMatch() {
-  player.score = 0; cpu.score = 0;
+  player.score = 0; 
+  cpu.score = 0;
+  player.scoredLast = false;
   winner = null;
   celebrate = null;
   rat.active = false;
@@ -252,6 +254,7 @@ let targetY = null;
 
 function updatePointerY(clientY) {
   const r = cvs.getBoundingClientRect();
+  if (!r.height) return;
   const scale = H / r.height;
   const rawY = (clientY - r.top) * scale;
   targetY = H - rawY; // reverse cat controls
@@ -313,7 +316,7 @@ function drawHeart(x, y, s, c) {
   ctx.beginPath();
   ctx.moveTo(x, y + s * .35);
   ctx.bezierCurveTo(x, y, x - s * .55, y, x - s * .55, y + s * .35);
-  ctx.bezierCurveTo(x - s * .55, y + s * .65, x, y + s * .85, x, y + s * 1.05);
+  ctx.bezierCurveTo(x - s * .55, y + s * .65, x, y + s * 1.05);
   ctx.bezierCurveTo(x, y + s * .85, x + s * .55, y + s * .65, x + s * .55, y + s * .35);
   ctx.bezierCurveTo(x + s * .55, y, x, y, x, y + s * .35);
   ctx.fill();
@@ -533,12 +536,13 @@ function drawDistraction(p) {
 }
 
 function drawChuruScene() {
+  if (!celebrate) return;
   const byPlayer = celebrate.byPlayer;
   const bodyC = byPlayer ? '#ffb84d' : '#a8a8b8';
   const earInC = byPlayer ? '#ffe0b3' : '#e0e0ea';
   const name = byPlayer ? '모모' : '나비';
-  const ct = celebrate.t = (celebrate.t || 0) + 1;
-  const pop = Math.min(1, ct / 12);
+  celebrate.t = (celebrate.t || 0) + 1;
+  const pop = Math.min(1, celebrate.t / 12);
 
   ctx.fillStyle = 'rgba(80,40,80,.55)';
   ctx.fillRect(0, 0, W, H);
@@ -634,8 +638,8 @@ function drawChuruScene() {
 
   ctx.fillStyle = '#6bbfa8';
   ctx.fillRect(-9, 58, 18, 4);
-  ctx.restore();
 
+  ctx.restore();
   ctx.restore();
 
   ctx.textAlign = 'center';
@@ -656,7 +660,6 @@ function drawChuruScene() {
   if (t % 9 === 0) {
     burstHearts(W / 2 + (Math.random() - .5) * 100, H / 2 - 40, 2, 1.5);
   }
-  if (t % 16 === 0) bleep(300 + Math.random() * 120, .06, 'triangle', .1, -80);
 }
 
 function drawCourt() {
@@ -772,7 +775,23 @@ function update() {
   if (player.blink > 0) player.blink--;
   if (cpu.blink > 0) cpu.blink--;
 
-  if (state !== S.PLAY && state !== S.SCORE_PAUSE) return;
+  if (state === S.SCORE_PAUSE) {
+    scorePauseT--;
+    if (scorePauseT <= 0) {
+      celebrate = null;
+      if (player.score >= WIN_SCORE || cpu.score >= WIN_SCORE) {
+        winner = player.score >= WIN_SCORE ? 'player' : 'cpu';
+        state = S.OVER;
+      } else {
+        serveBall(player.scoredLast ? -1 : 1);
+        nextRatIn = Math.min(nextRatIn, 60 * (3 + Math.random() * 5));
+        state = S.PLAY;
+      }
+    }
+    return;
+  }
+
+  if (state !== S.PLAY) return;
 
   const distracted = rat.active;
   if (targetY !== null) {
@@ -817,21 +836,6 @@ function update() {
     }
   }
 
-  if (state === S.SCORE_PAUSE) {
-    if (--scorePauseT <= 0) {
-      celebrate = null;
-      if (player.score >= WIN_SCORE || cpu.score >= WIN_SCORE) {
-        winner = player.score >= WIN_SCORE ? 'player' : 'cpu';
-        state = S.OVER;
-      } else {
-        serveBall(player.scoredLast ? -1 : 1);
-        nextRatIn = Math.min(nextRatIn, 60 * (3 + Math.random() * 5));
-        state = S.PLAY;
-      }
-    }
-    return;
-  }
-
   ball.x += ball.vx;
   ball.y += ball.vy;
   ball.spin += ball.vx * .04;
@@ -865,10 +869,12 @@ function update() {
   hitPaddle(player, 1) || hitPaddle(cpu, -1);
 
   if (ball.x < -20) {
-    cpu.score++; player.scoredLast = false;
+    cpu.score++; 
+    player.scoredLast = false;
     afterScore(false);
   } else if (ball.x > W + 20) {
-    player.score++; player.scoredLast = true;
+    player.score++; 
+    player.scoredLast = true;
     afterScore(true);
   }
 }
@@ -877,7 +883,7 @@ function afterScore(byPlayer) {
   meow();
   shake = 8;
   burstHearts(byPlayer ? W - 60 : 60, ball.y, 14, 3.5);
-  celebrate = { byPlayer, t: 0 };
+  celebrate = { byPlayer: byPlayer, t: 0 };
   rat.active = false;
   scorePauseT = 160;
   state = S.SCORE_PAUSE;
@@ -891,9 +897,11 @@ function render() {
   ctx.save();
   if (shake > .5) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
 
-  if (state === S.TITLE) { drawTitle(); }
-  else if (state === S.OVER) { drawOver(); }
-  else {
+  if (state === S.TITLE) { 
+    drawTitle(); 
+  } else if (state === S.OVER) { 
+    drawOver(); 
+  } else {
     drawCourt();
     drawScore();
     drawCatPaddle(player, 1, '#ffb84d', '#ffe0b3');
