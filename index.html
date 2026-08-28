@@ -237,7 +237,7 @@ function updatePointerY(clientY) {
   const r = cvs.getBoundingClientRect();
   if (!r.height) return;
   const rawY = (clientY - r.top) * (H / r.height);
-  targetY = H - rawY;
+  targetY = H - rawY; // Reverse cat controls
 }
 
 function handleStart() {
@@ -275,6 +275,24 @@ addEventListener('keydown', e => {
   if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') player.y += 20;
   if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') player.y -= 20;
 });
+
+function burstHearts(x, y, n, spread) {
+  spread = spread || 2.4;
+  for (let i = 0; i < n; i++) {
+    hearts.push({
+      x: x, y: y,
+      vx: (Math.random() - 0.5) * spread * 2,
+      vy: -Math.random() * spread - 1,
+      life: 1,
+      s: 5 + Math.random() * 5,
+      hue: Math.random() < 0.5 ? '#ff6f9c' : '#ffa3c4'
+    });
+  }
+}
+
+function floatText(x, y, txt, color) {
+  floaters.push({ x: x, y: y, txt: txt, color: color || '#ff5f96', life: 1 });
+}
 
 function drawHeart(x, y, s, c) {
   ctx.fillStyle = c;
@@ -400,34 +418,141 @@ function drawRat() {
   ctx.restore();
 }
 
+// Complete Cat Face + Licking Churu Scene
 function drawChuruScene() {
   if (!celebrate) return;
   const byPlayer = celebrate.byPlayer;
   const bodyC = byPlayer ? '#ffb84d' : '#a8a8b8';
+  const earInC = byPlayer ? '#ffe0b3' : '#e0e0ea';
   const name = byPlayer ? '모모' : '나비';
-  const R = 55;
+  const ct = celebrate.t = (celebrate.t || 0) + 1;
+  const pop = Math.min(1, ct / 10);
 
-  ctx.fillStyle = 'rgba(60, 30, 60, 0.65)';
+  // Background overlay
+  ctx.fillStyle = 'rgba(60, 25, 60, 0.6)';
   ctx.fillRect(0, 0, W, H);
 
   ctx.save();
-  ctx.translate(W / 2 - 30, H / 2);
+  ctx.translate(W / 2, H / 2 + 10);
+  ctx.scale(pop, pop);
+
+  // Stars
+  for (let i = 0; i < 6; i++) {
+    const a = t * 0.04 + i * 1.05;
+    drawStar(Math.cos(a) * 150, Math.sin(a) * 95, 6 + Math.sin(t * 0.2 + i) * 3, '#ffd76e');
+  }
+
+  const lick = Math.sin(t * 0.35);
+  const bob = Math.sin(t * 0.12) * 3;
+  const R = 55;
+
+  // --- Cat Head ---
+  ctx.save();
+  ctx.translate(-30, bob);
+
+  // Ears
   ctx.fillStyle = bodyC;
-  ctx.beginPath(); ctx.ellipse(0, 0, R, R * 0.88, 0, 0, 7); ctx.fill();
   ctx.beginPath();
   ctx.moveTo(-R * 0.85, -R * 0.5); ctx.lineTo(-R * 0.6, -R * 1.25); ctx.lineTo(-R * 0.2, -R * 0.8); ctx.fill();
   ctx.beginPath();
   ctx.moveTo(R * 0.85, -R * 0.5); ctx.lineTo(R * 0.6, -R * 1.25); ctx.lineTo(R * 0.2, -R * 0.8); ctx.fill();
+  ctx.fillStyle = earInC;
+  ctx.beginPath();
+  ctx.moveTo(-R * 0.68, -R * 0.62); ctx.lineTo(-R * 0.58, -R * 1.05); ctx.lineTo(-R * 0.34, -R * 0.74); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(R * 0.68, -R * 0.62); ctx.lineTo(R * 0.58, -R * 1.05); ctx.lineTo(R * 0.34, -R * 0.74); ctx.fill();
+
+  // Head base
+  ctx.fillStyle = bodyC;
+  ctx.beginPath(); ctx.ellipse(0, 0, R, R * 0.88, 0, 0, 7); ctx.fill();
+
+  // Happy closed eyes (＾ᴗ＾)
+  ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
+  for (const s of [-1, 1]) {
+    ctx.beginPath();
+    ctx.arc(s * R * 0.4, -R * 0.12, R * 0.18, Math.PI * 1.15, Math.PI * 1.85);
+    ctx.stroke();
+  }
+
+  // Blush
+  ctx.fillStyle = 'rgba(255, 120, 160, 0.5)';
+  ctx.beginPath(); ctx.ellipse(-R * 0.55, R * 0.18, R * 0.16, R * 0.1, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(R * 0.55, R * 0.18, R * 0.16, R * 0.1, 0, 0, 7); ctx.fill();
+
+  // Heart nose
+  drawHeart(0, R * 0.08, 8, '#ff7aa8');
+
+  // Whiskers
+  ctx.lineWidth = 1.6;
+  for (const s of [-1, 1]) {
+    for (const dy of [-4, 4]) {
+      ctx.beginPath();
+      ctx.moveTo(s * R * 0.6, R * 0.2 + dy);
+      ctx.lineTo(s * R * 1.05, R * 0.12 + dy * 1.8);
+      ctx.stroke();
+    }
+  }
+
+  // Mouth & Licking Tongue
+  ctx.fillStyle = '#a04a6a';
+  ctx.beginPath(); ctx.ellipse(6, R * 0.42, 11, 8 + lick * 2, 0.2, 0, 7); ctx.fill();
+  ctx.fillStyle = '#ff9bb8';
+  ctx.beginPath();
+  ctx.ellipse(14 + lick * 10, R * 0.46, 12 + lick * 5, 6, 0.35, 0, 7);
+  ctx.fill();
+
+  ctx.restore(); // end cat head
+
+  // --- Churu Tube ---
+  ctx.save();
+  ctx.translate(58, bob + 18 + lick * 3);
+  ctx.rotate(-0.7 + lick * 0.06);
+
+  ctx.fillStyle = '#8ed6c0';
+  ctx.fillRect(-9, 0, 18, 62);
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-9, 18, 18, 26);
+  ctx.fillStyle = '#ff6f9c';
+  ctx.font = 'bold 10px monospace';
+  ctx.textAlign = 'center';
+  ctx.save(); 
+  ctx.translate(0, 31); 
+  ctx.rotate(Math.PI / 2);
+  ctx.fillText('츄르', 0, 3);
   ctx.restore();
 
+  ctx.fillStyle = PAL.cream;
+  ctx.beginPath();
+  ctx.moveTo(-5, 0);
+  ctx.quadraticCurveTo(0, -14 - lick * 6, 5, 0);
+  ctx.fill();
+
+  ctx.fillStyle = '#6bbfa8';
+  ctx.fillRect(-9, 58, 18, 4);
+
+  ctx.restore(); // end churu tube
+  ctx.restore(); // end pop scale
+
+  // Texts
   ctx.textAlign = 'center';
-  ctx.font = 'bold 30px "Courier New", monospace';
+  ctx.font = 'bold 32px "Courier New", monospace';
+  ctx.fillStyle = 'rgba(124,63,102,.4)';
+  ctx.fillText('★ 츄르 타임! ★', W / 2 + 2, 88 + 2);
   ctx.fillStyle = '#ffd76e';
-  ctx.fillText('★ 츄르 타임! ★', W / 2, 100);
+  ctx.fillText('★ 츄르 타임! ★', W / 2, 88);
 
   ctx.font = 'bold 16px "Courier New", monospace';
   ctx.fillStyle = '#fff';
-  ctx.fillText(`${name}: "냠냠냠…"`, W / 2, H - 70);
+  const noms = ['냠냠', '냠냠냠', '할짝할짝', '쩝쩝'][(t / 20 | 0) % 4];
+  ctx.fillText(`${name}: "${noms}…"`, W / 2, H - 56);
+  ctx.font = 'bold 13px "Courier New", monospace';
+  ctx.fillStyle = '#ffc7e3';
+  ctx.fillText('득점 상품으로 츄르를 획득했습니다!', W / 2, H - 34);
+
+  if (t % 8 === 0) {
+    burstHearts(W / 2 + (Math.random() - 0.5) * 100, H / 2 - 40, 2, 1.5);
+  }
 }
 
 function drawCourt() {
@@ -502,6 +627,11 @@ function drawOver() {
 function update() {
   t++;
 
+  hearts = hearts.filter(h => (h.life -= 0.02) > 0);
+  hearts.forEach(h => { h.x += h.vx; h.y += h.vy; h.vy += 0.06; });
+  floaters = floaters.filter(f => (f.life -= 0.015) > 0);
+  floaters.forEach(f => f.y -= 0.8);
+
   if (state === S.SCORE_PAUSE) {
     scorePauseT--;
     if (scorePauseT <= 0) {
@@ -565,8 +695,8 @@ function update() {
 
 function afterScore(byPlayer) {
   meow();
-  celebrate = { byPlayer: byPlayer };
-  scorePauseT = 90; // ~1.5s pause to celebrate
+  celebrate = { byPlayer: byPlayer, t: 0 };
+  scorePauseT = 140; // Full duration to show Churu time
   state = S.SCORE_PAUSE;
 }
 
@@ -583,6 +713,20 @@ function render() {
     if (state === S.PLAY) drawBall();
     if (state === S.SCORE_PAUSE && celebrate) drawChuruScene();
   }
+
+  hearts.forEach(h => {
+    ctx.globalAlpha = h.life;
+    drawHeart(h.x, h.y, h.s, h.hue);
+    ctx.globalAlpha = 1;
+  });
+  floaters.forEach(f => {
+    ctx.globalAlpha = f.life;
+    ctx.font = 'bold 18px "Courier New", monospace';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = f.color;
+    ctx.fillText(f.txt, f.x, f.y);
+    ctx.globalAlpha = 1;
+  });
 }
 
 function loop() {
