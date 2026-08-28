@@ -14,12 +14,11 @@
     user-select: none;
   }
 
-  @font-face { font-family: fallback; src: local('Courier New'); }
-
   html, body {
     width: 100%;
-    height: 100%;
+    min-height: 100vh;
     background: #2b1b3d;
+    background: repeating-linear-gradient(45deg, #33204a 0 24px, #2b1b3d 24px 48px);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -27,7 +26,6 @@
     overflow: hidden;
     touch-action: none;
     font-family: 'Courier New', monospace;
-    background: repeating-linear-gradient(45deg, #33204a 0 24px, #2b1b3d 24px 48px);
     padding: 10px;
   }
 
@@ -37,7 +35,7 @@
     align-items: center;
     justify-content: center;
     width: 100%;
-    max-width: 680px;
+    max-width: 600px;
   }
 
   .crt-frame {
@@ -50,10 +48,7 @@
       inset 0 2px 0 rgba(255,255,255,.8),
       inset 0 -6px 12px rgba(0,0,0,.15);
     width: 100%;
-    max-width: 95vw;
-    display: flex;
-    justify-content: center;
-    align-items: center;
+    box-sizing: border-box;
   }
 
   .crt-frame::after {
@@ -74,20 +69,16 @@
     border-radius: 10px;
     overflow: hidden;
     box-shadow: inset 0 0 30px rgba(0,0,0,.35);
-    touch-action: none;
     width: 100%;
-    display: flex;
-    justify-content: center;
-    align-items: center;
     background: #ffe3f1;
+    display: block;
   }
 
   canvas { 
     display: block; 
-    image-rendering: pixelated;
     width: 100%;
-    max-height: 65vh;
-    aspect-ratio: 640 / 440;
+    height: auto;
+    image-rendering: pixelated;
     touch-action: none;
     cursor: pointer;
   }
@@ -95,34 +86,23 @@
   .screen::before {
     content: "";
     position: absolute;
-    inset: 0;
+    top: 0; left: 0; right: 0; bottom: 0;
     pointer-events: none;
     z-index: 3;
     background:
       repeating-linear-gradient(0deg,
-        rgba(0,0,0,.13) 0px, rgba(0,0,0,.13) 1px,
+        rgba(0,0,0,.1) 0px, rgba(0,0,0,.1) 1px,
         transparent 1px, transparent 3px);
-    mix-blend-mode: multiply;
-  }
-  .screen::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    z-index: 4;
-    background: radial-gradient(ellipse at center,
-      transparent 55%, rgba(43,20,50,.35) 100%);
   }
 
   .hint {
-    margin-top: 10px;
+    margin-top: 12px;
     color: #ffc7e3;
     font-size: 11px;
     letter-spacing: 0.5px;
     text-shadow: 0 2px 0 rgba(0,0,0,.4);
     text-align: center;
     line-height: 1.5;
-    padding: 0 8px;
   }
   .hint b { color: #fff0f8; }
 </style>
@@ -137,7 +117,7 @@
   </div>
   <div class="hint">
     <b>화면 터치/드래그</b> — 고양이는 <b>반대로</b> 움직입니다 ᓚᘏᗢ<br>
-    <b>화면 터치</b> 시작 · 먼저 <b>7점</b> 승리 · ⚠ 가끔 <b>쥐</b>가 지나가면 방황해요!
+    <b>화면 터치</b> 시작 · 먼저 <b>7점</b> 승리 · ⚠ 가끔 <b>쥐</b>가 지나가요!
   </div>
 </div>
 
@@ -146,10 +126,7 @@
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
 const W = 640, H = 440;
-cvs.width = W;
-cvs.height = H;
 
-// ---------- palette ----------
 const PAL = {
   bg1: '#ffe3f1', bg2: '#ffd1e8',
   net: '#ff9ec7',
@@ -162,9 +139,8 @@ const PAL = {
   shadow: 'rgba(124,63,102,.18)',
 };
 
-// ---------- safe audio (no crash on mobile) ----------
 let AC = null;
-function initAudio() {
+function getAudio() {
   try {
     if (!AC) {
       const AudioCtx = window.AudioContext || window.webkitAudioContext;
@@ -174,30 +150,35 @@ function initAudio() {
       AC.resume();
     }
   } catch(e) {}
+  return AC;
 }
 
-function bleep(freq, dur = .07, type = 'square', vol = .12, slide = 0) {
+function bleep(freq, dur, type, vol, slide) {
+  dur = dur || 0.07;
+  type = type || 'square';
+  vol = vol || 0.12;
+  slide = slide || 0;
   try {
-    if (!AC || AC.state !== 'running') return;
-    const o = AC.createOscillator(), g = AC.createGain();
-    o.type = type; 
-    o.frequency.setValueAtTime(freq, AC.currentTime);
-    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), AC.currentTime + dur);
-    g.gain.setValueAtTime(vol, AC.currentTime);
-    g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + dur);
-    o.connect(g).connect(AC.destination);
-    o.start(); 
-    o.stop(AC.currentTime + dur);
+    const ac = getAudio();
+    if (!ac) return;
+    const o = ac.createOscillator(), g = ac.createGain();
+    o.type = type;
+    o.frequency.setValueAtTime(freq, ac.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), ac.currentTime + dur);
+    g.gain.setValueAtTime(vol, ac.currentTime);
+    g.gain.exponentialRampToValueAtTime(0.0001, ac.currentTime + dur);
+    o.connect(g);
+    g.connect(ac.destination);
+    o.start();
+    o.stop(ac.currentTime + dur);
   } catch(e) {}
 }
 
 function meow() {
-  bleep(760, .16, 'triangle', .18, -320);
-  setTimeout(() => bleep(560, .22, 'triangle', .16, -260), 110);
+  bleep(760, 0.16, 'triangle', 0.18, -320);
+  setTimeout(() => bleep(560, 0.22, 'triangle', 0.16, -260), 110);
 }
-function purr() { bleep(140, .25, 'sawtooth', .06, -30); }
 
-// ---------- state ----------
 const S = { TITLE: 0, PLAY: 1, SCORE_PAUSE: 2, OVER: 3 };
 let state = S.TITLE;
 let t = 0;
@@ -205,9 +186,9 @@ let t = 0;
 const WIN_SCORE = 7;
 const PADDLE_H = 78, PADDLE_W = 26;
 
-const player = { x: 26, y: H/2 - PADDLE_H/2, score: 0, vy: 0, blink: 0, scoredLast: false };
-const cpu    = { x: W - 26 - PADDLE_W, y: H/2 - PADDLE_H/2, score: 0, vy: 0, blink: 0 };
-const ball = { x: W/2, y: H/2, vx: 0, vy: 0, r: 9, spin: 0, squish: 0 };
+const player = { x: 26, y: H/2 - PADDLE_H/2, score: 0, blink: 0, scoredLast: false };
+const cpu    = { x: W - 26 - PADDLE_W, y: H/2 - PADDLE_H/2, score: 0, blink: 0 };
+const ball   = { x: W/2, y: H/2, vx: 0, vy: 0, r: 9, spin: 0, squish: 0 };
 
 let hearts = [];
 let floaters = [];
@@ -218,20 +199,21 @@ let scorePauseT = 0;
 let celebrate = null;
 let nextRatIn = 60 * 6;
 
-const rat = { active: false, x: 0, y: 0, vx: 0, life: 0, wave: 0 };
+const rat = { active: false, x: 0, y: 0, vx: 0, wave: 0 };
 
 for (let i = 0; i < 7; i++) {
   bgPaws.push({
     x: 60 + Math.random() * (W - 120),
     y: 40 + Math.random() * (H - 80),
     a: Math.random() * Math.PI * 2,
-    s: .7 + Math.random() * .6
+    s: 0.7 + Math.random() * 0.6
   });
 }
 
 function serveBall(dir) {
-  ball.x = W/2; ball.y = H/2;
-  const ang = (Math.random() * .6 - .3);
+  ball.x = W / 2;
+  ball.y = H / 2;
+  const ang = (Math.random() * 0.6 - 0.3);
   const sp = 4.6;
   ball.vx = Math.cos(ang) * sp * dir;
   ball.vy = Math.sin(ang) * sp;
@@ -239,90 +221,74 @@ function serveBall(dir) {
 }
 
 function resetMatch() {
-  player.score = 0; 
+  player.score = 0;
   cpu.score = 0;
   player.scoredLast = false;
   winner = null;
   celebrate = null;
   rat.active = false;
   nextRatIn = 60 * (4 + Math.random() * 4);
-  serveBall(Math.random() < .5 ? 1 : -1);
+  serveBall(Math.random() < 0.5 ? 1 : -1);
 }
 
-// ---------- touch & mouse input ----------
 let targetY = null;
 
 function updatePointerY(clientY) {
   const r = cvs.getBoundingClientRect();
   if (!r.height) return;
-  const scale = H / r.height;
-  const rawY = (clientY - r.top) * scale;
-  targetY = H - rawY; // reverse cat controls
+  const rawY = (clientY - r.top) * (H / r.height);
+  targetY = H - rawY;
 }
 
 function handleStart() {
-  initAudio();
-  if (state === S.TITLE) { 
-    resetMatch(); 
-    state = S.PLAY; 
-    bleep(880, .1, 'square', .12, 200); 
-  } else if (state === S.OVER) { 
-    state = S.TITLE; 
-    bleep(660, .08); 
+  getAudio();
+  if (state === S.TITLE) {
+    resetMatch();
+    state = S.PLAY;
+    bleep(880, 0.1, 'square', 0.12, 200);
+  } else if (state === S.OVER) {
+    state = S.TITLE;
+    bleep(660, 0.08);
   }
 }
 
-// Touch events
-window.addEventListener('touchstart', () => initAudio(), { once: true });
 cvs.addEventListener('touchstart', e => {
   e.preventDefault();
   handleStart();
-  if (e.touches && e.touches.length > 0) {
-    updatePointerY(e.touches[0].clientY);
-  }
+  if (e.touches && e.touches[0]) updatePointerY(e.touches[0].clientY);
 }, { passive: false });
 
 cvs.addEventListener('touchmove', e => {
   e.preventDefault();
-  if (e.touches && e.touches.length > 0) {
-    updatePointerY(e.touches[0].clientY);
-  }
+  if (e.touches && e.touches[0]) updatePointerY(e.touches[0].clientY);
 }, { passive: false });
 
-// Mouse events
-cvs.addEventListener('mousemove', e => {
-  updatePointerY(e.clientY);
-});
-cvs.addEventListener('click', () => {
-  handleStart();
-});
+cvs.addEventListener('mousemove', e => updatePointerY(e.clientY));
+cvs.addEventListener('click', handleStart);
 
-// Keyboard
 addEventListener('keydown', e => {
-  initAudio();
+  getAudio();
   if (e.key === ' ') {
     e.preventDefault();
     handleStart();
   }
-  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') player.y += 18;
-  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') player.y -= 18;
+  if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') player.y += 20;
+  if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') player.y -= 20;
 });
-
-// ---------- drawing ----------
-function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x|0, y|0, w, h); }
 
 function drawHeart(x, y, s, c) {
   ctx.fillStyle = c;
   ctx.beginPath();
-  ctx.moveTo(x, y + s * .35);
-  ctx.bezierCurveTo(x, y, x - s * .55, y, x - s * .55, y + s * .35);
-  ctx.bezierCurveTo(x - s * .55, y + s * .65, x, y + s * 1.05);
-  ctx.bezierCurveTo(x, y + s * .85, x + s * .55, y + s * .65, x + s * .55, y + s * .35);
-  ctx.bezierCurveTo(x + s * .55, y, x, y, x, y + s * .35);
+  ctx.moveTo(x, y + s * 0.35);
+  ctx.bezierCurveTo(x, y, x - s * 0.55, y, x - s * 0.55, y + s * 0.35);
+  ctx.bezierCurveTo(x - s * 0.55, y + s * 0.65, x, y + s * 0.85, x, y + s * 1.05);
+  ctx.bezierCurveTo(x, y + s * 0.85, x + s * 0.55, y + s * 0.65, x + s * 0.55, y + s * 0.35);
+  ctx.bezierCurveTo(x + s * 0.55, y, x, y, x, y + s * 0.35);
   ctx.fill();
 }
 
-function drawPaw(x, y, s, c, rot = 0) {
+function drawPaw(x, y, s, c, rot) {
+  rot = rot || 0;
   ctx.save();
   ctx.translate(x, y); ctx.rotate(rot); ctx.fillStyle = c;
   ctx.beginPath(); ctx.ellipse(0, 3 * s, 6 * s, 5 * s, 0, 0, 7); ctx.fill();
@@ -339,28 +305,28 @@ function drawStar(x, y, s, c) {
   for (let i = 0; i < 4; i++) {
     ctx.rotate(Math.PI / 2);
     ctx.moveTo(0, 0);
-    ctx.quadraticCurveTo(s * .18, s * .18, 0, s);
-    ctx.quadraticCurveTo(-s * .18, s * .18, 0, 0);
+    ctx.quadraticCurveTo(s * 0.18, s * 0.18, 0, s);
+    ctx.quadraticCurveTo(-s * 0.18, s * 0.18, 0, 0);
   }
   ctx.fill(); ctx.restore();
 }
 
 function drawCatPaddle(p, facing, bodyC, earInC) {
   const cx = p.x + PADDLE_W / 2;
-  const wob = Math.sin(t * .1 + p.y * .05) * 1.2;
+  const wob = Math.sin(t * 0.1 + p.y * 0.05) * 1.2;
   const x = p.x, y = p.y + wob;
   const w = PADDLE_W, h = PADDLE_H;
 
   ctx.fillStyle = PAL.shadow;
-  ctx.beginPath(); ctx.ellipse(cx, y + h + 8, w * .8, 5, 0, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(cx, y + h + 8, w * 0.8, 5, 0, 0, 7); ctx.fill();
 
   ctx.strokeStyle = bodyC; ctx.lineWidth = 6; ctx.lineCap = 'round';
   ctx.beginPath();
   const tx = facing === 1 ? x - 4 : x + w + 4;
   ctx.moveTo(tx, y + h - 14);
   ctx.quadraticCurveTo(
-    tx - facing * 12, y + h - 2 + Math.sin(t * .15) * 4,
-    tx - facing * 8, y + h + 10 + Math.cos(t * .12) * 3
+    tx - facing * 12, y + h - 2 + Math.sin(t * 0.15) * 4,
+    tx - facing * 8, y + h + 10 + Math.cos(t * 0.12) * 3
   );
   ctx.stroke();
 
@@ -385,19 +351,12 @@ function drawCatPaddle(p, facing, bodyC, earInC) {
   ctx.moveTo(x + w - 4.5, y + 15); ctx.lineTo(x + w - 6.5, y + 7); ctx.lineTo(x + w - 9.5, y + 13.5); ctx.fill();
 
   const fy = y + 26;
-  const blinking = p.blink > 0 || (t % 260) < 6;
   ctx.fillStyle = PAL.ink;
-  if (blinking) {
-    px(x + 5, fy, 6, 2, PAL.ink);
-    px(x + w - 11, fy, 6, 2, PAL.ink);
-  } else {
-    ctx.beginPath(); ctx.arc(x + 8, fy, 2.6, 0, 7); ctx.fill();
-    ctx.beginPath(); ctx.arc(x + w - 8, fy, 2.6, 0, 7); ctx.fill();
-    px(x + 8, fy - 2, 1.5, 1.5, '#fff');
-    px(x + w - 8, fy - 2, 1.5, 1.5, '#fff');
-  }
+  ctx.beginPath(); ctx.arc(x + 8, fy, 2.6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + w - 8, fy, 2.6, 0, 7); ctx.fill();
 
   drawHeart(cx, fy + 4, 4.5, '#ff7aa8');
+
   ctx.strokeStyle = PAL.ink; ctx.lineWidth = 1.4; ctx.lineCap = 'round';
   ctx.beginPath();
   ctx.moveTo(cx - 4, fy + 10);
@@ -405,261 +364,70 @@ function drawCatPaddle(p, facing, bodyC, earInC) {
   ctx.quadraticCurveTo(cx + 2, fy + 12.5, cx + 4, fy + 10);
   ctx.stroke();
 
-  ctx.lineWidth = 1.2;
-  for (const side of [-1, 1]) {
-    for (const dy of [-1, 3]) {
-      ctx.beginPath();
-      ctx.moveTo(cx + side * 10, fy + 6 + dy);
-      ctx.lineTo(cx + side * 19, fy + 4 + dy * 1.4);
-      ctx.stroke();
-    }
-  }
-
   ctx.fillStyle = 'rgba(255,120,160,.45)';
   ctx.beginPath(); ctx.ellipse(x + 5.5, fy + 6, 3, 2, 0, 0, 7); ctx.fill();
   ctx.beginPath(); ctx.ellipse(x + w - 5.5, fy + 6, 3, 2, 0, 0, 7); ctx.fill();
-
-  ctx.fillStyle = 'rgba(255,255,255,.35)';
-  px(x + 5, y + 48, w - 10, 4, 'rgba(255,255,255,.35)');
-  px(x + 5, y + 58, w - 10, 4, 'rgba(255,255,255,.25)');
-
-  ctx.fillStyle = '#fff';
-  ctx.beginPath(); ctx.ellipse(x + 7, y + h - 3, 4, 3, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(x + w - 7, y + h - 3, 4, 3, 0, 0, 7); ctx.fill();
 }
 
 function drawBall() {
-  const { x, y, r } = ball;
-  const sq = ball.squish;
+  const x = ball.x, y = ball.y, r = ball.r;
   ctx.save();
   ctx.translate(x, y);
-  ctx.rotate(ball.spin);
-  ctx.scale(1 + sq * .3, 1 - sq * .3);
-
-  ctx.fillStyle = PAL.shadow;
-  ctx.beginPath(); ctx.ellipse(2, r + 4, r * .9, 3, 0, 0, 7); ctx.fill();
-
   ctx.fillStyle = PAL.yarn;
   ctx.beginPath(); ctx.arc(0, 0, r, 0, 7); ctx.fill();
 
-  ctx.strokeStyle = PAL.yarnLine; ctx.lineWidth = 1.6;
+  ctx.strokeStyle = PAL.yarnLine; ctx.lineWidth = 1.5;
   for (let i = -2; i <= 2; i++) {
     ctx.beginPath();
-    ctx.ellipse(0, 0, r * .92, r * (.35 + Math.abs(i) * .18), i * .6, 0, 7);
+    ctx.ellipse(0, 0, r * 0.9, r * (0.35 + Math.abs(i) * 0.18), i * 0.6, 0, 7);
     ctx.stroke();
   }
-
-  ctx.fillStyle = 'rgba(255,255,255,.5)';
-  ctx.beginPath(); ctx.arc(-r * .35, -r * .38, r * .26, 0, 7); ctx.fill();
   ctx.restore();
-
-  ctx.strokeStyle = PAL.yarnLine; ctx.lineWidth = 1.4;
-  ctx.beginPath();
-  ctx.moveTo(x - ball.vx * 2, y - ball.vy * 2);
-  ctx.quadraticCurveTo(
-    x - ball.vx * 5, y - ball.vy * 5 + Math.sin(t * .3) * 4,
-    x - ball.vx * 8, y - ball.vy * 8 + Math.cos(t * .25) * 5
-  );
-  ctx.stroke();
 }
 
 function drawRat() {
   if (!rat.active) return;
-  const { x, y } = rat;
+  const x = rat.x, y = rat.y;
   const dir = rat.vx > 0 ? 1 : -1;
-  const run = Math.sin(t * .5) * 2;
   ctx.save();
-  ctx.translate(x, y + Math.abs(run) * .5);
+  ctx.translate(x, y);
   ctx.scale(dir, 1);
-
-  ctx.fillStyle = PAL.shadow;
-  ctx.beginPath(); ctx.ellipse(0, 12, 14, 3, 0, 0, 7); ctx.fill();
-
-  ctx.strokeStyle = '#e8a0b8'; ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-  ctx.beginPath();
-  ctx.moveTo(-12, 2);
-  ctx.quadraticCurveTo(-22, -2 + Math.sin(t * .3) * 4, -30, 4 + Math.cos(t * .3) * 4);
-  ctx.stroke();
-
   ctx.fillStyle = '#b9aec9';
   ctx.beginPath(); ctx.ellipse(0, 2, 13, 9, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(10, -1, 8, 7, .2, 0, 7); ctx.fill();
-
-  ctx.fillStyle = '#b9aec9';
-  ctx.beginPath(); ctx.arc(7, -8, 4.5, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(13, -8, 4.5, 0, 7); ctx.fill();
-  ctx.fillStyle = '#ffc7dd';
-  ctx.beginPath(); ctx.arc(7, -8, 2.5, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.arc(13, -8, 2.5, 0, 7); ctx.fill();
-
-  ctx.fillStyle = PAL.ink;
-  ctx.beginPath(); ctx.arc(13, -2, 1.6, 0, 7); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(10, -1, 8, 7, 0.2, 0, 7); ctx.fill();
   ctx.fillStyle = '#ff7aa8';
   ctx.beginPath(); ctx.arc(18, 0, 2, 0, 7); ctx.fill();
-
-  ctx.strokeStyle = PAL.ink; ctx.lineWidth = .9;
-  for (const dy of [-2, 1]) {
-    ctx.beginPath(); ctx.moveTo(18, dy); ctx.lineTo(24, dy - 1); ctx.stroke();
-  }
-
-  ctx.strokeStyle = '#9d92b0'; ctx.lineWidth = 2.4;
-  ctx.beginPath(); ctx.moveTo(-6, 10); ctx.lineTo(-6 + run, 13); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(4, 10); ctx.lineTo(4 - run, 13); ctx.stroke();
   ctx.restore();
-
-  if ((t / 25 | 0) % 3 === 0) {
-    ctx.font = 'bold 12px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = '#8a7ba8';
-    ctx.fillText('찍찍!', x, y - 22);
-  }
-}
-
-function drawDistraction(p) {
-  if (!rat.active) return;
-  const cx = p.x + PADDLE_W / 2;
-  const bounce = Math.abs(Math.sin(t * .25)) * 6;
-
-  ctx.font = 'bold 20px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.fillStyle = '#ff5f96';
-  ctx.fillText('!!', cx, p.y - 10 - bounce);
-
-  ctx.strokeStyle = 'rgba(255,95,150,.35)';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([4, 5]);
-  ctx.beginPath();
-  ctx.moveTo(cx, p.y + 26);
-  ctx.lineTo(rat.x, rat.y);
-  ctx.stroke();
-  ctx.setLineDash([]);
 }
 
 function drawChuruScene() {
   if (!celebrate) return;
   const byPlayer = celebrate.byPlayer;
   const bodyC = byPlayer ? '#ffb84d' : '#a8a8b8';
-  const earInC = byPlayer ? '#ffe0b3' : '#e0e0ea';
   const name = byPlayer ? '모모' : '나비';
-  celebrate.t = (celebrate.t || 0) + 1;
-  const pop = Math.min(1, celebrate.t / 12);
-
-  ctx.fillStyle = 'rgba(80,40,80,.55)';
-  ctx.fillRect(0, 0, W, H);
-  const spot = ctx.createRadialGradient(W/2, H/2, 30, W/2, H/2, 240);
-  spot.addColorStop(0, 'rgba(255,240,200,.35)');
-  spot.addColorStop(1, 'rgba(255,240,200,0)');
-  ctx.fillStyle = spot;
-  ctx.fillRect(0, 0, W, H);
-
-  ctx.save();
-  ctx.translate(W / 2, H / 2 + 10);
-  ctx.scale(pop, pop);
-
-  for (let i = 0; i < 6; i++) {
-    const a = t * .04 + i * 1.05;
-    drawStar(Math.cos(a) * 150, Math.sin(a) * 95,
-      6 + Math.sin(t * .2 + i) * 3, '#ffd76e');
-  }
-
-  const lick = Math.sin(t * .35);
-  const bob = Math.sin(t * .12) * 3;
   const R = 55;
 
-  ctx.save();
-  ctx.translate(-30, bob);
-
-  ctx.fillStyle = bodyC;
-  ctx.beginPath();
-  ctx.moveTo(-R * .85, -R * .5); ctx.lineTo(-R * .6, -R * 1.25); ctx.lineTo(-R * .2, -R * .8); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(R * .85, -R * .5); ctx.lineTo(R * .6, -R * 1.25); ctx.lineTo(R * .2, -R * .8); ctx.fill();
-  ctx.fillStyle = earInC;
-  ctx.beginPath();
-  ctx.moveTo(-R * .68, -R * .62); ctx.lineTo(-R * .58, -R * 1.05); ctx.lineTo(-R * .34, -R * .74); ctx.fill();
-  ctx.beginPath();
-  ctx.moveTo(R * .68, -R * .62); ctx.lineTo(R * .58, -R * 1.05); ctx.lineTo(R * .34, -R * .74); ctx.fill();
-
-  ctx.fillStyle = bodyC;
-  ctx.beginPath(); ctx.ellipse(0, 0, R, R * .88, 0, 0, 7); ctx.fill();
-
-  ctx.strokeStyle = PAL.ink; ctx.lineWidth = 3.5; ctx.lineCap = 'round';
-  for (const s of [-1, 1]) {
-    ctx.beginPath();
-    ctx.arc(s * R * .4, -R * .12, R * .18, Math.PI * 1.15, Math.PI * 1.85);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = 'rgba(255,120,160,.5)';
-  ctx.beginPath(); ctx.ellipse(-R * .55, R * .18, R * .16, R * .1, 0, 0, 7); ctx.fill();
-  ctx.beginPath(); ctx.ellipse(R * .55, R * .18, R * .16, R * .1, 0, 0, 7); ctx.fill();
-
-  drawHeart(0, R * .08, 8, '#ff7aa8');
-
-  ctx.lineWidth = 1.6;
-  for (const s of [-1, 1]) for (const dy of [-4, 4]) {
-    ctx.beginPath();
-    ctx.moveTo(s * R * .6, R * .2 + dy);
-    ctx.lineTo(s * R * 1.05, R * .12 + dy * 1.8);
-    ctx.stroke();
-  }
-
-  ctx.fillStyle = '#a04a6a';
-  ctx.beginPath(); ctx.ellipse(6, R * .42, 11, 8 + lick * 2, .2, 0, 7); ctx.fill();
-  ctx.fillStyle = '#ff9bb8';
-  ctx.beginPath();
-  ctx.ellipse(14 + lick * 10, R * .46, 12 + lick * 5, 6, .35, 0, 7);
-  ctx.fill();
-  ctx.restore();
+  ctx.fillStyle = 'rgba(60, 30, 60, 0.65)';
+  ctx.fillRect(0, 0, W, H);
 
   ctx.save();
-  ctx.translate(58, bob + 18 + lick * 3);
-  ctx.rotate(-.7 + lick * .06);
-
-  ctx.fillStyle = '#8ed6c0';
+  ctx.translate(W / 2 - 30, H / 2);
+  ctx.fillStyle = bodyC;
+  ctx.beginPath(); ctx.ellipse(0, 0, R, R * 0.88, 0, 0, 7); ctx.fill();
   ctx.beginPath();
-  if (ctx.roundRect) ctx.roundRect(-9, 0, 18, 62, 5); else ctx.rect(-9, 0, 18, 62);
-  ctx.fill();
-
-  ctx.fillStyle = '#fff';
-  ctx.fillRect(-9, 18, 18, 26);
-  ctx.fillStyle = '#ff6f9c';
-  ctx.font = 'bold 10px "Courier New", monospace';
-  ctx.textAlign = 'center';
-  ctx.save(); ctx.translate(0, 31); ctx.rotate(Math.PI / 2);
-  ctx.fillText('츄르', 0, 3);
-  ctx.restore();
-
-  ctx.fillStyle = PAL.cream;
+  ctx.moveTo(-R * 0.85, -R * 0.5); ctx.lineTo(-R * 0.6, -R * 1.25); ctx.lineTo(-R * 0.2, -R * 0.8); ctx.fill();
   ctx.beginPath();
-  ctx.moveTo(-5, 0);
-  ctx.quadraticCurveTo(0, -14 - lick * 6, 5, 0);
-  ctx.fill();
-
-  ctx.fillStyle = '#6bbfa8';
-  ctx.fillRect(-9, 58, 18, 4);
-
-  ctx.restore();
+  ctx.moveTo(R * 0.85, -R * 0.5); ctx.lineTo(R * 0.6, -R * 1.25); ctx.lineTo(R * 0.2, -R * 0.8); ctx.fill();
   ctx.restore();
 
   ctx.textAlign = 'center';
-  ctx.font = 'bold 34px "Courier New", monospace';
-  ctx.fillStyle = 'rgba(124,63,102,.4)';
-  ctx.fillText('★ 츄르 타임! ★', W / 2 + 2, 92 + 2);
+  ctx.font = 'bold 30px "Courier New", monospace';
   ctx.fillStyle = '#ffd76e';
-  ctx.fillText('★ 츄르 타임! ★', W / 2, 92);
+  ctx.fillText('★ 츄르 타임! ★', W / 2, 100);
 
-  ctx.font = 'bold 18px "Courier New", monospace';
+  ctx.font = 'bold 16px "Courier New", monospace';
   ctx.fillStyle = '#fff';
-  const noms = ['냠냠', '냠냠냠', '할짝할짝', '쩝쩝'][(t / 20 | 0) % 4];
-  ctx.fillText(`${name}: "${noms}…"`, W / 2, H - 60);
-  ctx.font = 'bold 14px "Courier New", monospace';
-  ctx.fillStyle = '#ffc7e3';
-  ctx.fillText(`득점 상품으로 츄르를 획득했습니다!`, W / 2, H - 36);
-
-  if (t % 9 === 0) {
-    burstHearts(W / 2 + (Math.random() - .5) * 100, H / 2 - 40, 2, 1.5);
-  }
+  ctx.fillText(`${name}: "냠냠냠…"`, W / 2, H - 70);
 }
 
 function drawCourt() {
@@ -667,15 +435,9 @@ function drawCourt() {
   g.addColorStop(0, PAL.bg1); g.addColorStop(1, PAL.bg2);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = 'rgba(255,255,255,.28)';
-  const cs = 40;
-  for (let yy = 0; yy < H; yy += cs)
-    for (let xx = (yy / cs % 2) * cs; xx < W; xx += cs * 2)
-      ctx.fillRect(xx, yy, cs, cs);
-
   bgPaws.forEach((p, i) => {
     drawPaw(p.x, p.y, p.s, 'rgba(255,143,191,.20)', p.a);
-    drawStar(p.x + 30, p.y - 20, 5 + Math.sin(t * .05 + i) * 2, 'rgba(255,255,255,.5)');
+    drawStar(p.x + 30, p.y - 20, 5 + Math.sin(t * 0.05 + i) * 2, 'rgba(255,255,255,.5)');
   });
 
   ctx.strokeStyle = PAL.net; ctx.lineWidth = 4;
@@ -689,9 +451,6 @@ function drawCourt() {
 function drawScore() {
   ctx.textAlign = 'center';
   ctx.font = 'bold 44px "Courier New", monospace';
-  ctx.fillStyle = 'rgba(124,63,102,.25)';
-  ctx.fillText(player.score, W / 2 - 70 + 2, 58 + 2);
-  ctx.fillText(cpu.score, W / 2 + 70 + 2, 58 + 2);
   ctx.fillStyle = PAL.ink;
   ctx.fillText(player.score, W / 2 - 70, 58);
   ctx.fillText(cpu.score, W / 2 + 70, 58);
@@ -704,76 +463,44 @@ function drawScore() {
 
 function drawTitle() {
   drawCourt();
-
-  const bob = Math.sin(t * .06) * 6;
+  const bob = Math.sin(t * 0.06) * 6;
   ctx.textAlign = 'center';
-
-  ctx.font = 'bold 72px "Courier New", monospace';
-  ctx.fillStyle = 'rgba(124,63,102,.25)';
-  ctx.fillText('냥 퐁 !', W / 2 + 4, 168 + bob + 4);
-  const grad = ctx.createLinearGradient(0, 100, 0, 190);
-  grad.addColorStop(0, '#ff5f96'); grad.addColorStop(1, '#ff9ec7');
-  ctx.fillStyle = grad;
+  ctx.font = 'bold 64px "Courier New", monospace';
+  ctx.fillStyle = '#ff5f96';
   ctx.fillText('냥 퐁 !', W / 2, 168 + bob);
 
   ctx.font = 'bold 16px "Courier New", monospace';
   ctx.fillStyle = '#b05a88';
   ctx.fillText('～ N Y A N ★ P O N G ～', W / 2, 200 + bob);
 
-  drawCatPaddle({ x: 90, y: 200 + Math.sin(t * .08) * 8, blink: 0 }, 1, '#ffb84d', '#ffe0b3');
-  drawCatPaddle({ x: W - 90 - PADDLE_W, y: 200 + Math.cos(t * .08) * 8, blink: 0 }, -1, '#a8a8b8', '#e0e0ea');
-  drawHeart(W / 2, 250 + Math.sin(t * .1) * 5, 16, '#ff6f9c');
-  drawStar(W / 2 - 40, 240, 8 + Math.sin(t * .1) * 3, '#ffd76e');
-  drawStar(W / 2 + 40, 260, 8 + Math.cos(t * .1) * 3, '#ffd76e');
+  drawCatPaddle({ x: 90, y: 200, blink: 0 }, 1, '#ffb84d', '#ffe0b3');
+  drawCatPaddle({ x: W - 90 - PADDLE_W, y: 200, blink: 0 }, -1, '#a8a8b8', '#e0e0ea');
 
   if ((t / 30 | 0) % 2 === 0) {
     ctx.font = 'bold 20px "Courier New", monospace';
     ctx.fillStyle = PAL.ink;
     ctx.fillText('▶ 화면을 터치하세요 ◀', W / 2, 350);
   }
-  ctx.font = '13px "Courier New", monospace';
-  ctx.fillStyle = '#c76a9a';
-  ctx.fillText('주의: 고양이는 말을 안 들어서 조작이 반대입니다!', W / 2, 378);
-  ctx.fillText('쥐가 나타나면 아무도 공을 안 봅니다… 득점하면 츄르!', W / 2, 396);
-  ctx.fillText('© 1996 NYANTENDO', W / 2, 418);
 }
 
 function drawOver() {
   drawCourt();
   drawScore();
-  drawCatPaddle(player, 1, '#ffb84d', '#ffe0b3');
-  drawCatPaddle(cpu, -1, '#a8a8b8', '#e0e0ea');
-
   ctx.textAlign = 'center';
   const isWin = winner === 'player';
-  ctx.font = 'bold 52px "Courier New", monospace';
-  ctx.fillStyle = 'rgba(124,63,102,.25)';
-  ctx.fillText(isWin ? '냥승리!' : '냥패배…', W / 2 + 3, H / 2 - 20 + 3);
+  ctx.font = 'bold 50px "Courier New", monospace';
   ctx.fillStyle = isWin ? '#ff5f96' : '#8a7ba8';
   ctx.fillText(isWin ? '냥승리!' : '냥패배…', W / 2, H / 2 - 20);
 
-  ctx.font = 'bold 18px "Courier New", monospace';
-  ctx.fillStyle = PAL.ink;
-  ctx.fillText(isWin ? '(=^･ω･^=) 모모의 승리!' : '(=；ェ；=) 나비가 이겼어요', W / 2, H / 2 + 16);
-
   if ((t / 30 | 0) % 2 === 0) {
     ctx.font = 'bold 16px "Courier New", monospace';
-    ctx.fillText('▶ 화면을 터치해 다시 하기 ◀', W / 2, H / 2 + 60);
+    ctx.fillStyle = PAL.ink;
+    ctx.fillText('▶ 화면을 터치해 다시 시작 ◀', W / 2, H / 2 + 60);
   }
 }
 
-// ---------- update ----------
 function update() {
   t++;
-
-  hearts = hearts.filter(h => (h.life -= .02) > 0);
-  hearts.forEach(h => { h.x += h.vx; h.y += h.vy; h.vy += .06; });
-  floaters = floaters.filter(f => (f.life -= .015) > 0);
-  floaters.forEach(f => f.y -= .8);
-  if (shake > 0) shake *= .85;
-  if (ball.squish > 0) ball.squish *= .82;
-  if (player.blink > 0) player.blink--;
-  if (cpu.blink > 0) cpu.blink--;
 
   if (state === S.SCORE_PAUSE) {
     scorePauseT--;
@@ -784,7 +511,6 @@ function update() {
         state = S.OVER;
       } else {
         serveBall(player.scoredLast ? -1 : 1);
-        nextRatIn = Math.min(nextRatIn, 60 * (3 + Math.random() * 5));
         state = S.PLAY;
       }
     }
@@ -793,74 +519,32 @@ function update() {
 
   if (state !== S.PLAY) return;
 
-  const distracted = rat.active;
   if (targetY !== null) {
-    player.y += (targetY - (player.y + PADDLE_H / 2)) * (distracted ? .06 : .22);
-  }
-  if (distracted) {
-    player.y += (rat.y - (player.y + PADDLE_H / 2)) * .05;
+    player.y += (targetY - (player.y + PADDLE_H / 2)) * 0.22;
   }
   player.y = Math.max(10, Math.min(H - PADDLE_H - 10, player.y));
 
-  const target = distracted ? rat.y
-    : (ball.vx > 0 ? ball.y : H / 2 + Math.sin(t * .02) * 40);
+  const target = ball.vx > 0 ? ball.y : H / 2;
   const diff = target - (cpu.y + PADDLE_H / 2);
-  const cpuMax = distracted ? 2.2 : 3.6;
-  cpu.y += Math.max(-cpuMax, Math.min(cpuMax, diff * .09));
+  cpu.y += Math.max(-3.5, Math.min(3.5, diff * 0.09));
   cpu.y = Math.max(10, Math.min(H - PADDLE_H - 10, cpu.y));
-
-  if (!rat.active && state === S.PLAY) {
-    if (--nextRatIn <= 0) {
-      rat.active = true;
-      rat.life = 0;
-      const fromLeft = Math.random() < .5;
-      rat.x = fromLeft ? -30 : W + 30;
-      rat.vx = (fromLeft ? 1 : -1) * (1.6 + Math.random() * 1.2);
-      rat.y = 60 + Math.random() * (H - 120);
-      rat.wave = Math.random() * 6.28;
-      floatText(W / 2, 110, '🐭 쥐다!!', '#8a7ba8');
-      player.blink = 20; cpu.blink = 20;
-      bleep(1200, .08, 'square', .12, 400);
-      setTimeout(() => bleep(1400, .08, 'square', .1, 400), 120);
-    }
-  }
-  if (rat.active) {
-    rat.life++;
-    rat.x += rat.vx;
-    rat.y += Math.sin(t * .2 + rat.wave) * 1.4;
-    if (t % 40 === 0) bleep(1500 + Math.random() * 300, .05, 'square', .06, 300);
-    if (rat.x < -40 || rat.x > W + 40) {
-      rat.active = false;
-      nextRatIn = 60 * (5 + Math.random() * 6);
-      floatText(W / 2, 110, '휴… 쥐가 갔다', '#c76a9a');
-    }
-  }
 
   ball.x += ball.vx;
   ball.y += ball.vy;
-  ball.spin += ball.vx * .04;
 
-  if (ball.y - ball.r < 10) { ball.y = 10 + ball.r; ball.vy *= -1; bleep(520, .05); ball.squish = .5; }
-  if (ball.y + ball.r > H - 10) { ball.y = H - 10 - ball.r; ball.vy *= -1; bleep(520, .05); ball.squish = .5; }
+  if (ball.y - ball.r < 10) { ball.y = 10 + ball.r; ball.vy *= -1; bleep(520, 0.05); }
+  if (ball.y + ball.r > H - 10) { ball.y = H - 10 - ball.r; ball.vy *= -1; bleep(520, 0.05); }
 
   function hitPaddle(p, dir) {
     if (ball.y + ball.r > p.y && ball.y - ball.r < p.y + PADDLE_H) {
       const edge = dir === 1 ? p.x + PADDLE_W : p.x;
-      if (dir === 1 ? (ball.x - ball.r < edge && ball.x > p.x) :
-                      (ball.x + ball.r > edge && ball.x < p.x + PADDLE_W)) {
+      if (dir === 1 ? (ball.x - ball.r < edge && ball.x > p.x) : (ball.x + ball.r > edge && ball.x < p.x + PADDLE_W)) {
         ball.x = dir === 1 ? edge + ball.r : edge - ball.r;
         const rel = (ball.y - (p.y + PADDLE_H / 2)) / (PADDLE_H / 2);
-        const speed = Math.min(9.5, Math.hypot(ball.vx, ball.vy) * 1.05 + .15);
-        const ang = rel * .9;
-        ball.vx = Math.cos(ang) * speed * dir;
-        ball.vy = Math.sin(ang) * speed;
-        ball.squish = 1;
-        p.blink = 12;
-        shake = 4;
-        burstHearts(ball.x, ball.y, 6);
-        bleep(dir === 1 ? 700 : 640, .06, 'square', .14, 120);
-        purr();
-        if (Math.random() < .3) floatText(ball.x, ball.y - 16, '냥!');
+        const speed = Math.min(9.5, Math.hypot(ball.vx, ball.vy) * 1.05 + 0.15);
+        ball.vx = Math.cos(rel * 0.9) * speed * dir;
+        ball.vy = Math.sin(rel * 0.9) * speed;
+        bleep(dir === 1 ? 700 : 640, 0.06, 'square', 0.14, 120);
         return true;
       }
     }
@@ -869,11 +553,11 @@ function update() {
   hitPaddle(player, 1) || hitPaddle(cpu, -1);
 
   if (ball.x < -20) {
-    cpu.score++; 
+    cpu.score++;
     player.scoredLast = false;
     afterScore(false);
   } else if (ball.x > W + 20) {
-    player.score++; 
+    player.score++;
     player.scoredLast = true;
     afterScore(true);
   }
@@ -881,53 +565,24 @@ function update() {
 
 function afterScore(byPlayer) {
   meow();
-  shake = 8;
-  burstHearts(byPlayer ? W - 60 : 60, ball.y, 14, 3.5);
-  celebrate = { byPlayer: byPlayer, t: 0 };
-  rat.active = false;
-  scorePauseT = 160;
+  celebrate = { byPlayer: byPlayer };
+  scorePauseT = 90; // ~1.5s pause to celebrate
   state = S.SCORE_PAUSE;
-  setTimeout(() => bleep(523, .1, 'square', .1), 200);
-  setTimeout(() => bleep(659, .1, 'square', .1), 340);
-  setTimeout(() => bleep(784, .18, 'square', .12), 480);
 }
 
-// ---------- render ----------
 function render() {
-  ctx.save();
-  if (shake > .5) ctx.translate((Math.random() - .5) * shake, (Math.random() - .5) * shake);
-
-  if (state === S.TITLE) { 
-    drawTitle(); 
-  } else if (state === S.OVER) { 
-    drawOver(); 
+  if (state === S.TITLE) {
+    drawTitle();
+  } else if (state === S.OVER) {
+    drawOver();
   } else {
     drawCourt();
     drawScore();
     drawCatPaddle(player, 1, '#ffb84d', '#ffe0b3');
     drawCatPaddle(cpu, -1, '#a8a8b8', '#e0e0ea');
-    drawDistraction(player);
-    drawDistraction(cpu);
-    drawRat();
     if (state === S.PLAY) drawBall();
     if (state === S.SCORE_PAUSE && celebrate) drawChuruScene();
   }
-
-  hearts.forEach(h => {
-    ctx.globalAlpha = h.life;
-    drawHeart(h.x, h.y, h.s, h.hue);
-    ctx.globalAlpha = 1;
-  });
-  floaters.forEach(f => {
-    ctx.globalAlpha = f.life;
-    ctx.font = 'bold 18px "Courier New", monospace';
-    ctx.textAlign = 'center';
-    ctx.fillStyle = f.color;
-    ctx.fillText(f.txt, f.x, f.y);
-    ctx.globalAlpha = 1;
-  });
-
-  ctx.restore();
 }
 
 function loop() {
