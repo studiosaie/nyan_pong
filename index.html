@@ -36,19 +36,20 @@
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    max-width: 100%;
-    max-height: 100%;
+    width: 100%;
+    max-width: 680px;
   }
 
   .crt-frame {
     position: relative;
-    padding: 14px 14px 22px 14px;
+    padding: 12px 12px 22px 12px;
     background: linear-gradient(145deg, #ffd9ec, #f7b6d5 60%, #e397bd);
-    border-radius: 20px;
+    border-radius: 18px;
     box-shadow:
       0 12px 35px rgba(0,0,0,.55),
       inset 0 2px 0 rgba(255,255,255,.8),
       inset 0 -6px 12px rgba(0,0,0,.15);
+    width: 100%;
     max-width: 95vw;
     display: flex;
     justify-content: center;
@@ -58,7 +59,7 @@
   .crt-frame::after {
     content: "≡ NYAN·TRON 1996 ≡";
     position: absolute;
-    bottom: 4px;
+    bottom: 3px;
     left: 50%;
     transform: translateX(-50%);
     font-size: 10px;
@@ -70,22 +71,27 @@
 
   .screen {
     position: relative;
-    border-radius: 12px;
+    border-radius: 10px;
     overflow: hidden;
     box-shadow: inset 0 0 30px rgba(0,0,0,.35);
     touch-action: none;
+    width: 100%;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    background: #ffe3f1;
   }
 
   canvas { 
     display: block; 
     image-rendering: pixelated;
-    max-width: 100%;
-    height: auto;
-    max-height: 70vh;
+    width: 100%;
+    max-height: 65vh;
+    aspect-ratio: 640 / 440;
     touch-action: none;
+    cursor: pointer;
   }
 
-  /* CRT scanlines + vignette */
   .screen::before {
     content: "";
     position: absolute;
@@ -109,14 +115,14 @@
   }
 
   .hint {
-    margin-top: 12px;
+    margin-top: 10px;
     color: #ffc7e3;
     font-size: 11px;
     letter-spacing: 0.5px;
     text-shadow: 0 2px 0 rgba(0,0,0,.4);
     text-align: center;
     line-height: 1.5;
-    padding: 0 10px;
+    padding: 0 8px;
   }
   .hint b { color: #fff0f8; }
 </style>
@@ -130,7 +136,7 @@
     </div>
   </div>
   <div class="hint">
-    <b>화면 터치/드래그</b> — 하지만 고양이는 <b>반대로</b> 움직입니다 ᓚᘏᗢ<br>
+    <b>화면 터치/드래그</b> — 고양이는 <b>반대로</b> 움직입니다 ᓚᘏᗢ<br>
     <b>화면 터치</b> 시작 · 먼저 <b>7점</b> 승리 · ⚠ 가끔 <b>쥐</b>가 지나가면 방황해요!
   </div>
 </div>
@@ -139,9 +145,11 @@
 (() => {
 const cvs = document.getElementById('game');
 const ctx = cvs.getContext('2d');
-const W = cvs.width, H = cvs.height;
+const W = 640, H = 440;
+cvs.width = W;
+cvs.height = H;
 
-// ---------- palette (90s pastel) ----------
+// ---------- palette ----------
 const PAL = {
   bg1: '#ffe3f1', bg2: '#ffd1e8',
   net: '#ff9ec7',
@@ -154,25 +162,35 @@ const PAL = {
   shadow: 'rgba(124,63,102,.18)',
 };
 
-// ---------- audio (tiny 90s bleeps) ----------
+// ---------- safe audio (no crash on mobile) ----------
 let AC = null;
-function audio() {
-  if (!AC) AC = new (window.AudioContext || window.webkitAudioContext)();
-  if (AC && AC.state === 'suspended') AC.resume();
-  return AC;
-}
-function bleep(freq, dur = .07, type = 'square', vol = .12, slide = 0) {
+function initAudio() {
   try {
-    const ac = audio();
-    const o = ac.createOscillator(), g = ac.createGain();
-    o.type = type; o.frequency.value = freq;
-    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), ac.currentTime + dur);
-    g.gain.setValueAtTime(vol, ac.currentTime);
-    g.gain.exponentialRampToValueAtTime(.0001, ac.currentTime + dur);
-    o.connect(g).connect(ac.destination);
-    o.start(); o.stop(ac.currentTime + dur);
+    if (!AC) {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (AudioCtx) AC = new AudioCtx();
+    }
+    if (AC && AC.state === 'suspended') {
+      AC.resume();
+    }
   } catch(e) {}
 }
+
+function bleep(freq, dur = .07, type = 'square', vol = .12, slide = 0) {
+  try {
+    if (!AC || AC.state !== 'running') return;
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; 
+    o.frequency.setValueAtTime(freq, AC.currentTime);
+    if (slide) o.frequency.exponentialRampToValueAtTime(Math.max(40, freq + slide), AC.currentTime + dur);
+    g.gain.setValueAtTime(vol, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + dur);
+    o.connect(g).connect(AC.destination);
+    o.start(); 
+    o.stop(AC.currentTime + dur);
+  } catch(e) {}
+}
+
 function meow() {
   bleep(760, .16, 'triangle', .18, -320);
   setTimeout(() => bleep(560, .22, 'triangle', .16, -260), 110);
@@ -232,68 +250,62 @@ function resetMatch() {
 // ---------- touch & mouse input ----------
 let targetY = null;
 
-function setTouchPosition(clientY) {
+function updatePointerY(clientY) {
   const r = cvs.getBoundingClientRect();
-  const rawY = (clientY - r.top) * (H / r.height);
-  targetY = H - rawY; // Reverse cat movement
+  const scale = H / r.height;
+  const rawY = (clientY - r.top) * scale;
+  targetY = H - rawY; // reverse cat controls
 }
 
-function handleStartAction() {
-  audio();
-  if (state === S.TITLE) { resetMatch(); state = S.PLAY; bleep(880, .1, 'square', .12, 200); }
-  else if (state === S.OVER) { state = S.TITLE; bleep(660, .08); }
+function handleStart() {
+  initAudio();
+  if (state === S.TITLE) { 
+    resetMatch(); 
+    state = S.PLAY; 
+    bleep(880, .1, 'square', .12, 200); 
+  } else if (state === S.OVER) { 
+    state = S.TITLE; 
+    bleep(660, .08); 
+  }
 }
 
+// Touch events
+window.addEventListener('touchstart', () => initAudio(), { once: true });
 cvs.addEventListener('touchstart', e => {
   e.preventDefault();
-  handleStartAction();
-  if (e.touches.length > 0) setTouchPosition(e.touches[0].clientY);
+  handleStart();
+  if (e.touches && e.touches.length > 0) {
+    updatePointerY(e.touches[0].clientY);
+  }
 }, { passive: false });
 
 cvs.addEventListener('touchmove', e => {
   e.preventDefault();
-  if (e.touches.length > 0) setTouchPosition(e.touches[0].clientY);
+  if (e.touches && e.touches.length > 0) {
+    updatePointerY(e.touches[0].clientY);
+  }
 }, { passive: false });
 
+// Mouse events
 cvs.addEventListener('mousemove', e => {
-  const r = cvs.getBoundingClientRect();
-  const rawY = (e.clientY - r.top) * (H / r.height);
-  targetY = H - rawY;
+  updatePointerY(e.clientY);
 });
-
 cvs.addEventListener('click', () => {
-  handleStartAction();
+  handleStart();
 });
 
-// Keyboard fallback
+// Keyboard
 addEventListener('keydown', e => {
-  audio();
+  initAudio();
   if (e.key === ' ') {
     e.preventDefault();
-    handleStartAction();
+    handleStart();
   }
   if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') player.y += 18;
   if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') player.y -= 18;
 });
 
-// ---------- particles ----------
-function burstHearts(x, y, n, spread = 2.4) {
-  for (let i = 0; i < n; i++) {
-    hearts.push({
-      x, y,
-      vx: (Math.random() - .5) * spread * 2,
-      vy: -Math.random() * spread - 1,
-      life: 1,
-      s: 5 + Math.random() * 5,
-      hue: Math.random() < .5 ? '#ff6f9c' : '#ffa3c4'
-    });
-  }
-}
-function floatText(x, y, txt, color = '#ff5f96') {
-  floaters.push({ x, y, txt, color, life: 1 });
-}
-
-// ---------- drawing helpers ----------
+// ---------- drawing ----------
 function px(x, y, w, h, c) { ctx.fillStyle = c; ctx.fillRect(x|0, y|0, w, h); }
 
 function drawHeart(x, y, s, c) {
@@ -301,7 +313,7 @@ function drawHeart(x, y, s, c) {
   ctx.beginPath();
   ctx.moveTo(x, y + s * .35);
   ctx.bezierCurveTo(x, y, x - s * .55, y, x - s * .55, y + s * .35);
-  ctx.bezierCurveTo(x - s * .55, y + s * .65, x, y + s * 1.05);
+  ctx.bezierCurveTo(x - s * .55, y + s * .65, x, y + s * .85, x, y + s * 1.05);
   ctx.bezierCurveTo(x, y + s * .85, x + s * .55, y + s * .65, x + s * .55, y + s * .35);
   ctx.bezierCurveTo(x + s * .55, y, x, y, x, y + s * .35);
   ctx.fill();
@@ -602,7 +614,7 @@ function drawChuruScene() {
 
   ctx.fillStyle = '#8ed6c0';
   ctx.beginPath();
-  ctx.roundRect ? ctx.roundRect(-9, 0, 18, 62, 5) : ctx.rect(-9, 0, 18, 62);
+  if (ctx.roundRect) ctx.roundRect(-9, 0, 18, 62, 5); else ctx.rect(-9, 0, 18, 62);
   ctx.fill();
 
   ctx.fillStyle = '#fff';
@@ -664,7 +676,6 @@ function drawCourt() {
   });
 
   ctx.strokeStyle = PAL.net; ctx.lineWidth = 4;
-  ctx.setLineDash([]);
   ctx.strokeRect(6, 6, W - 12, H - 12);
 
   for (let yy = 20; yy < H - 10; yy += 34) {
